@@ -1,37 +1,66 @@
-// src/lib/api.ts
-import type { Deal } from "@/features/deals/types";
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// web/src/lib/api.ts
 
-export async function fetchDeals(): Promise<Deal[]> {
-  const r = await fetch(`${API_URL}/api/deals`);
-  if (!r.ok) throw new Error(`Failed to fetch deals (${r.status})`);
-  return r.json();
-}
+export type Deal = {
+  id: number;
+  name: string;
+  liquidity: number;
+  buff: number;
+  csgoTm: number;
+  vol7d: number;
+  purch: number;
+  target: number;
+  youpin: number;
+  margin: number;
+  sku?: string | null;
+  deletedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
-export async function deleteDeal(id: number): Promise<void> {
-  const r = await fetch(`${API_URL}/api/deals/${id}`, { method: "DELETE" });
-  if (!r.ok) throw new Error(`Delete failed (${r.status})`);
-}
+export type DealsResponse = {
+  items: Deal[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
 
-type StreamEvent =
-  | { type: "deal_upserted"; data: Deal }
-  | { type: "deal_deleted"; data: { id: number } }
-  | { type: "connected"; data: { ok: boolean } }
-  | { type: "ping"; data: Record<string, never> };
+/**
+ * Fetch deals from the API.
+ * Accepts both shapes:
+ *  - Array:            [{...}, ...]
+ *  - Object wrapper:   { items: [...], total, page, pageSize }
+ * Always returns { items, total, page, pageSize }.
+ */
+export async function fetchDeals(page = 1, pageSize = 25): Promise<DealsResponse> {
+  // We proxy /api to the backend (Caddy), so use a relative path in the browser.
+  const url = `/api/deals?page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(
+    pageSize
+  )}`;
 
-export function connectDealsStream(onEvent: (ev: StreamEvent) => void): EventSource {
-  const es = new EventSource(`${API_URL}/api/stream`);
-  es.addEventListener("connected", (e) =>
-    onEvent({ type: "connected", data: JSON.parse((e as MessageEvent).data) })
-  );
-  es.addEventListener("ping", (e) =>
-    onEvent({ type: "ping", data: JSON.parse((e as MessageEvent).data) })
-  );
-  es.addEventListener("deal_upserted", (e) =>
-    onEvent({ type: "deal_upserted", data: JSON.parse((e as MessageEvent).data) })
-  );
-  es.addEventListener("deal_deleted", (e) =>
-    onEvent({ type: "deal_deleted", data: JSON.parse((e as MessageEvent).data) })
-  );
-  return es;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`GET /api/deals ${res.status}: ${text}`);
+  }
+
+  const data = await res.json();
+
+  // If the server returns a plain array, normalize it.
+  if (Array.isArray(data)) {
+    const items = data as Deal[];
+    return {
+      items,
+      total: items.length,
+      page: 1,
+      pageSize: items.length || pageSize,
+    };
+  }
+
+  // Otherwise assume a wrapped object.
+  return {
+    items: Array.isArray(data.items) ? (data.items as Deal[]) : [],
+    total: typeof data.total === "number" ? data.total : 0,
+    page: typeof data.page === "number" ? data.page : page,
+    pageSize: typeof data.pageSize === "number" ? data.pageSize : pageSize,
+  };
 }

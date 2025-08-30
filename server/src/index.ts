@@ -1,159 +1,120 @@
+// server/src/index.ts
 import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
-import { dealKey } from "./util/key.js";
-import { dealPriceFloor } from "./util/price.js";
-import { purgeExpiredBlacklists } from "./cron/purge.js";
+import { dealSchema } from "./validators/deal.js";
 
 const prisma = new PrismaClient();
-const app = express();
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "0.0.0.0";
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? "http://localhost:5173";
+const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? "http://localhost";
+const API_KEY = process.env.API_KEY ?? "";
 
-app.use(cors({ origin: ALLOW_ORIGIN }));
+// App & middleware
+const app = express();
+app.use(
+  cors({
+    origin: ALLOW_ORIGIN,
+    credentials: false,
+  })
+);
 app.use(express.json());
 
-// --- SSE ---
-type Client = { id: number; res: express.Response };
-let clients: Client[] = [];
-let nextClientId = 1;
-
-function sseBroadcast(event: string, data: unknown) {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  clients.forEach((c) => c.res.write(payload));
-}
-
-app.get("/api/stream", (req, res) => {
-  res.set({
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  });
-  res.flushHeaders();
-
-  const id = nextClientId++;
-  clients.push({ id, res });
-  res.write(`event: connected\ndata: {"ok":true}\n\n`);
-
-  const hb = setInterval(() => {
-    res.write(`event: ping\ndata: {}\n\n`);
-  }, 15000);
-
-  req.on("close", () => {
-    clearInterval(hb);
-    clients = clients.filter((c) => c.id !== id);
-  });
-});
-
-// --- REST ---
+// Health
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-app.get("/api/deals", async (_req, res) => {
-  const deals = await prisma.deal.findMany({
-    where: { deletedAt: null },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(deals);
+// List deals (latest first)
+app.get("/api/deals", async (_req, res, next) => {
+  try {
+    const deals = await prisma.deal.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+    res.json(deals);
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.delete("/api/deals/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const existing = await prisma.deal.findUnique({ where: { id } });
-  if (!existing) return res.status(404).json({ error: "Not found" });
+// API key guard
+function requireKey(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  if (!API_KEY) return res.status(500).json({ error: "Server missing API_KEY" });
+  const hdr = req.header("x-api-key");
+  if (hdr !== API_KEY) return res.status(401).json({ error: "Unauthorized" });
+  next();
+}
 
-  await prisma.deal.update({ where: { id }, data: { deletedAt: new Date() } });
+// Upsert deal with validation
+app.post("/api/deals", requireKey, async (req, res, next) => {
+  try {
+    const parsed = dealSchema.parse(req.body);
 
-  const key = dealKey(existing);
-  const price = dealPriceFloor(existing);
-  const extendTo = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  const active = await prisma.dealBlacklist.findFirst({
-    where: { key, expiresAt: { gt: new Date() } },
-    orderBy: { expiresAt: "desc" },
-  });
-
-  if (!active) {
-    await prisma.dealBlacklist.create({ data: { key, price, expiresAt: extendTo } });
-  } else {
-    await prisma.dealBlacklist.update({
-      where: { id: active.id },
-      data: {
-        price: Math.min(active.price, price),
-        expiresAt: active.expiresAt > extendTo ? active.expiresAt : extendTo,
+    const saved = await prisma.deal.upsert({
+      where: { id: parsed.id },
+      update: {
+        name: parsed.name,
+        liquidity: parsed.liquidity,
+        buff: parsed.buff,
+        csgoTm: parsed.csgoTm,
+        vol7d: parsed.vol7d,
+        purch: parsed.purch,
+        target: parsed.target,
+        youpin: parsed.youpin,
+        margin: parsed.margin,
+        sku: parsed.sku ?? null,
+      },
+      create: {
+        id: parsed.id,
+        name: parsed.name,
+        liquidity: parsed.liquidity,
+        buff: parsed.buff,
+        csgoTm: parsed.csgoTm,
+        vol7d: parsed.vol7d,
+        purch: parsed.purch,
+        target: parsed.target,
+        youpin: parsed.youpin,
+        margin: parsed.margin,
+        sku: parsed.sku ?? null,
       },
     });
-  }
 
-  sseBroadcast("deal_deleted", { id });
-  res.json({ ok: true });
+    res.status(201).json(saved);
+  } catch (err: any) {
+    if (err?.name === "ZodError") {
+      return res.status(400).json({ error: "Validation failed", issues: err.issues });
+    }
+    next(err);
+  }
 });
 
-app.post("/api/deals", async (req, res) => {
-  const d = req.body as {
-    id: number;
-    name: string;
-    liquidity: number;
-    buff: number;
-    csgoTm: number;
-    vol7d: number;
-    purch: number;
-    target: number;
-    youpin: number;
-    margin: number;
-    sku?: string;
-  };
-  if (!d || typeof d.id !== "number" || !d.name) {
-    return res.status(400).json({ error: "bad payload" });
-  }
-
-  const key = dealKey(d);
-  const price = dealPriceFloor(d);
-
-  const bl = await prisma.dealBlacklist.findFirst({
-    where: { key, expiresAt: { gt: new Date() } },
-    orderBy: { expiresAt: "desc" },
-  });
-
-  if (bl && price >= bl.price) {
-    return res.status(202).json({ suppressed: true, threshold: bl.price });
-  }
-
-  const saved = await prisma.deal.upsert({
-    where: { id: d.id },
-    update: { ...d, deletedAt: null },
-    create: d,
-  });
-
-  if (bl && price < bl.price) {
-    await prisma.dealBlacklist.update({ where: { id: bl.id }, data: { price } });
-  }
-
-  sseBroadcast("deal_upserted", saved);
-  res.json(saved);
+// Global error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((
+  err: any,
+  _req: express.Request,
+  res: express.Response,
+  _next: express.NextFunction
+) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal Server Error" });
 });
 
-// --- housekeeping ---
-(async () => {
-  try {
-    const n = await purgeExpiredBlacklists();
-    if (n) console.log(`Purged ${n} expired blacklist entries`);
-  } catch (err) {
-    console.error("Initial purge failed:", err);
-  }
-})();
-setInterval(async () => {
-  try {
-    const n = await purgeExpiredBlacklists();
-    if (n) console.log(`Purged ${n} expired blacklist entries`);
-  } catch (err) {
-    console.error("Scheduled purge failed:", err);
-  }
-}, 6 * 60 * 60 * 1000);
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+process.on("SIGTERM", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
 
-// --- start ---
 app.listen(PORT, HOST, () => {
-  console.log(`API on http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+  console.log(`API on http://${HOST}:${PORT}`);
   console.log(`Allow-Origin: ${ALLOW_ORIGIN}`);
 });
