@@ -1,4 +1,3 @@
-// server/src/index.ts
 import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
@@ -6,20 +5,79 @@ import { dealSchema } from "./validators/deal.js";
 
 const prisma = new PrismaClient();
 
-const PORT = Number(process.env.PORT ?? 3001);
+// ---- Env ----
+const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "0.0.0.0";
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? "http://localhost";
+const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? "http://localhost:5173";
 const API_KEY = process.env.API_KEY ?? "";
 
-// App & middleware
+// Streamer (optional)
+const STREAMER_URL = process.env.STREAMER_URL || "http://localhost:3100/emit";
+const STREAMER_AUTH_TOKEN = process.env.STREAMER_AUTH_TOKEN || "change-me";
+
+// ---- Helpers ----
+function parseOrigins(src: string): (string | RegExp)[] | "*" {
+  const s = src.trim();
+  if (s === "*" || s === "") return "*";
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function publishRow(payload: {
+  type: "insert" | "update" | "delete";
+  table: string;
+  row?: unknown;
+  id?: string | number;
+}) {
+  if (!STREAMER_AUTH_TOKEN) return;
+  try {
+    const res = await fetch(STREAMER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${STREAMER_AUTH_TOKEN}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(`[streamer] failed: ${res.status} ${text}`);
+    }
+  } catch (e) {
+    console.warn("[streamer] error:", (e as Error).message);
+  }
+}
+
+// ---- App & middleware ----
 const app = express();
+
 app.use(
   cors({
-    origin: ALLOW_ORIGIN,
+    origin: parseOrigins(ALLOW_ORIGIN),
     credentials: false,
   })
 );
 app.use(express.json());
+
+// ---- Root (so GET / doesn’t show “Cannot GET /”) ----
+app.get("/", (_req, res) => {
+  res.type("json").send(
+    JSON.stringify(
+      {
+        ok: true,
+        service: "goldmine-server",
+        health: "/api/health",
+        routes: ["/api/health", "/api/deals (GET, POST with x-api-key)"],
+      },
+      null,
+      2
+    )
+  );
+});
+
+// ---- Routes ----
 
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -49,10 +107,16 @@ function requireKey(
   next();
 }
 
-// Upsert deal with validation
+// Upsert deal with validation (+ publish to streamer)
 app.post("/api/deals", requireKey, async (req, res, next) => {
   try {
     const parsed = dealSchema.parse(req.body);
+
+    // detect insert vs update
+    const existed = await prisma.deal.findUnique({
+      where: { id: parsed.id },
+      select: { id: true },
+    });
 
     const saved = await prisma.deal.upsert({
       where: { id: parsed.id },
@@ -83,10 +147,19 @@ app.post("/api/deals", requireKey, async (req, res, next) => {
       },
     });
 
+    // fire-and-forget publish (optional)
+    publishRow({
+      type: existed ? "update" : "insert",
+      table: "deals",
+      row: saved,
+    });
+
     res.status(201).json(saved);
   } catch (err: any) {
     if (err?.name === "ZodError") {
-      return res.status(400).json({ error: "Validation failed", issues: err.issues });
+      return res
+        .status(400)
+        .json({ error: "Validation failed", issues: err.issues });
     }
     next(err);
   }
