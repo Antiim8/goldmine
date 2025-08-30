@@ -1,0 +1,25 @@
+{
+  email you@example.com
+}
+
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  # Serve the SPA build
+  root * /usr/share/caddy
+  try_files {path} /index.html
+  file_server
+
+  # Reverse proxy to API
+  handle_path /api* {
+    reverse_proxy api:3001
+  }
+
+  # Security headers
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer-when-downgrade"
+  }
+}

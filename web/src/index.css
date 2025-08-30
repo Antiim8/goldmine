@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/* -------------------- Fonts -------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ------------------ Theme tokens ------------------ */
+/* DARK is default */
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+
+  --text-primary: #ffffff;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+
+  --accent-gold: #ffd700;
+  --accent-gold-dark: #b8860b;
+
+  --border-color: #374151;
+  --hover-bg: #374151;
+}
+
+/* LIGHT (enable by adding class="light" on <html>) */
+:root.light {
+  --bg-primary: #fefefe;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #ffffff;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+
+  --accent-gold: #b8860b;
+  --accent-gold-dark: #8b6914;
+
+  --border-color: #e5e7eb;
+  --hover-bg: #f3f4f6;
+}
+
+/* ------------------ Base layout ------------------ */
+html, body, #root { height: 100%; min-height: 100%; }
+body {
+  margin: 0;
+  background-color: var(--bg-primary) !important; /* <- guarantees dark bg */
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+/* logo font */
+.logo-text { font-family: 'Playfair Display', serif; }
+
+/* ------------------ Canva utilities ------------------ */
+.bg-primary   { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-tertiary  { background-color: var(--bg-tertiary); }
+
+.text-primary   { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted     { color: var(--text-muted); }
+
+.border-custom { border-color: var(--border-color); }
+.hover-bg:hover { background-color: var(--hover-bg); }
+
+.accent-gold    { color: var(--accent-gold); }
+.bg-accent-gold { background-color: var(--accent-gold); }
+.bg-accent-gold:hover { background-color: var(--accent-gold-dark); }
+
+.placeholder-muted::placeholder { color: var(--text-muted); }
+
+/* Table text forced white like in your Canva snippet */
+.table-text-white, .table-text-white * { color: #ffffff !important; }
+
+/* Make form controls inherit text color unless you set classes */
+input, select, textarea { color: var(--text-primary); }

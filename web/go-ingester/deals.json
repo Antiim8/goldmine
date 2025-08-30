@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "name": "AK-47 | Redline (Field-Tested) #1",
+    "liquidity": 80,
+    "buff": 42.5,
+    "csgoTm": 40.0,
+    "vol7d": 100,
+    "purch": 10,
+    "target": 50.0,
+    "youpin": 49.0,
+    "margin": 8.0
+  },
+  {
+    "id": 2,
+    "name": "AK-47 | Redline (Field-Tested) #2",
+    "liquidity": 81,
+    "buff": 43.5,
+    "csgoTm": 40.9,
+    "vol7d": 101,
+    "purch": 11,
+    "target": 51.0,
+    "youpin": 50.0,
+    "margin": 9.0
+  },
+  {
+    "id": 3,
+    "name": "AK-47 | Redline (Field-Tested) #3",
+    "liquidity": 82,
+    "buff": 44.5,
+    "csgoTm": 41.8,
+    "vol7d": 102,
+    "purch": 12,
+    "target": 52.0,
+    "youpin": 51.0,
+    "margin": 10.0
+  },
+  {
+    "id": 4,
+    "name": "AK-47 | Redline (Field-Tested) #4",
+    "liquidity": 83,
+    "buff": 45.5,
+    "csgoTm": 42.7,
+    "vol7d": 103,
+    "purch": 10,
+    "target": 53.0,
+    "youpin": 52.0,
+    "margin": 11.0
+  },
+  {
+    "id": 5,
+    "name": "AK-47 | Redline (Field-Tested) #5",
+    "liquidity": 84,
+    "buff": 46.5,
+    "csgoTm": 43.6,
+    "vol7d": 104,
+    "purch": 11,
+    "target": 54.0,
+    "youpin": 53.0,
+    "margin": 12.0
+  }
+]

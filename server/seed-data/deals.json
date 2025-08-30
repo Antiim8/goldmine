@@ -1,0 +1,4 @@
+[
+  { "id": 1, "name": "AK-47 | Redline (Field-Tested)", "liquidity": 85, "buff": 42.5, "csgoTm": 38.2, "vol7d": 127, "purch": 23, "target": 45.0, "youpin": 41.8, "margin": 9.4 },
+  { "id": 2, "name": "AWP | Dragon Lore (Battle-Scarred)", "liquidity": 12, "buff": 2850.00, "csgoTm": 2720.00, "vol7d": 8, "purch": 2, "target": 3000.00, "youpin": 2950.00, "margin": 8.5 }
+]

@@ -1,0 +1,24 @@
+:80 {
+  encode zstd gzip
+
+  route {
+    # KEEP the /api prefix when proxying
+    handle /api/* {
+      reverse_proxy api:3001
+    }
+
+    # SPA for everything else
+    handle {
+      root * /usr/share/caddy
+      try_files {path} /index.html
+      file_server
+    }
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer-when-downgrade"
+  }
+}

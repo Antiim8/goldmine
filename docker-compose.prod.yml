@@ -1,0 +1,82 @@
+name: goldmine
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [gmnet]
+
+  api:
+    build:
+      context: ./server
+      dockerfile: ./Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT}
+      ALLOW_ORIGIN: http://localhost
+      API_KEY: ${API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "3001"
+    restart: unless-stopped
+    networks:
+      gmnet:
+        aliases: [api]   # <-- ensure resolvable as 'api' on gmnet
+
+  web:
+    build:
+      context: ./web
+      dockerfile: ./Dockerfile
+      args:
+        VITE_API_URL: http://${APP_DOMAIN}
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      gmnet:
+        aliases: [web]
+    # (legacy but can help names show up)
+    links:
+      - api:api
+
+  ingester:
+    build:
+      context: ./ingesters/go
+      dockerfile: ./Dockerfile
+    environment:
+      GOLDMINE_API_URL: http://api:3001
+      API_KEY: ${INGEST_API_KEY}
+    depends_on:
+      - api
+    restart: "no"
+    networks:
+      gmnet:
+        aliases: [ingester]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  gmnet:
+    driver: bridge
