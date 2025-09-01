@@ -1,0 +1,39 @@
+import * as React from 'react';
+import { DealsFilter, DealsFilterValues } from './components/DealsFilter';
+import { DealsTable } from './components/DealsTable';
+import type { Deal } from './types';
+
+export default function App() {
+  const [allDeals, setAllDeals] = React.useState<Deal[]>([]);
+  const [filters, setFilters] = React.useState<DealsFilterValues>({ q:'', minPrice:'', maxPrice:'' });
+
+  React.useEffect(() => {
+    fetch('/api/deals')
+      .then(r => r.json())
+      .then((rows: Deal[]) => setAllDeals(rows))
+      .catch((e) => console.error('Deals fetch failed', e));
+  }, []);
+
+  const filtered = React.useMemo(() => {
+    const q = (filters.q || '').toLowerCase();
+    const min = filters.minPrice ? parseFloat(filters.minPrice) : -Infinity;
+    const max = filters.maxPrice ? parseFloat(filters.maxPrice) : +Infinity;
+
+    return allDeals.filter(d => {
+      const titleOk = q ? (d.title || '').toLowerCase().includes(q) : true;
+      const price = d.price ?? NaN;
+      const priceOk = Number.isFinite(price) ? (price >= min && price <= max) : (min === -Infinity && max === +Infinity);
+      return titleOk && priceOk;
+    });
+  }, [allDeals, filters]);
+
+  return (
+    <div style={{maxWidth: 900, margin: '24px auto', padding: '0 16px'}}>
+      <h1>Deals</h1>
+      <DealsFilter initial={filters} onChange={setFilters} />
+      <div style={{marginTop: 16}}>
+        <DealsTable data={filtered} />
+      </div>
+    </div>
+  );
+}
